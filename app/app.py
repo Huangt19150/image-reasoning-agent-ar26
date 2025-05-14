@@ -136,6 +136,7 @@ with gr.Blocks() as demo:
         # 💠 Find the Crystals 
         ## A MINI Proof-Of-Concept Protein Crystallization Image Classifier using GPT4.
         Code available in this repo: [microscopy-vlm-lpb25](https://github.com/Huangt19150/microscopy-vlm-lpb25)
+        
         🏆 Runner-up in [LPB25](https://www.kxsb.org/lpb25#winners) Imaging track!
 
         ## 🔷 Why Protein Crystals:

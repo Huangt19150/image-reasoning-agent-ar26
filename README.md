@@ -1,5 +1,5 @@
 # 💠 Find the Crystals
-A Mini Proof-of-Concept Protein Crystallization Image Classifier using GPT4.
+A Mini Proof-of-Concept Protein Crystallization Image Classifier using GPT4.  
 🏆 Runner-up in [London, Paris, Berlin AI HackXelerator™ - LPB25](https://www.kxsb.org/lpb25#winners) Imaging track!
 
 ## Demo
