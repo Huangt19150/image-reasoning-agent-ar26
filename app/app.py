@@ -8,13 +8,14 @@ from openai import OpenAI
 # NOTE: Deploy ONLY: Add the src directory to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 
-from mwm_vlm.utils.common import encode_image, hash_image
+from mwm_vlm.utils.common import hash_image
 from mwm_vlm.utils.gradio import load_cache, save_cache
+from mwm_vlm.components.interpreter import CrystallizationInterpreter
 
-
+# NOTE: Replace with actual OpenAI API key when test locally
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 CLIENT = OpenAI(api_key=OPENAI_API_KEY)
-CACHE = load_cache()    
+CACHE = load_cache()
 
 
 def clear_cache():
@@ -27,99 +28,30 @@ def clear_cache():
     CACHE = {}
     save_cache(CACHE)
     print("Cache cleared.")
-    return ""
+    return ["", ""]
 
-# TODO: Refactor into src
-def get_prpmpt(image_path):
-    
-    # Base64 encode each example image and your test image
-    base64_example1 = encode_image("examples/prompt_images/6488.jpeg")
-    base64_example2 = encode_image("examples/prompt_images/220.jpeg")
-    base64_example3 = encode_image("examples/prompt_images/200.jpeg")
-    base64_example4 = encode_image("examples/prompt_images/9123.jpeg")
-    base64_test = encode_image(image_path)
 
-    # Prepare the common part of the prompt
-    instructions = (
-        "You are helping with tagging Protein Crystallization images. "
-        "You will be given an image and a list of labels with definitions. "
-        "Choose the most appropriate single label from the list according to the definition. "
-        "Add a short explanation of your choice at the end in free text.\n\n"
-        "**List:**\n"
-        "[clear, crystals, precipitate, other]\n\n"
-        "**Definitions:**\n"
-        "clear: Transparent solution without any particulate matter observed within a droplet or in the field of view.\n"
-        "crystals: Crystals observed within a droplet or in the field of view.\n"
-        "precipitate: Precipitate observed within a droplet or in the field of view.\n"
-        "other: Unexpected observations which are not clear solution, crystals, or precipitate.\n\n"
-        "Below are some examples:\n"
-    )
-
-    # Build the list of input items
-    input_items = [
-        {"type": "input_text", "text": instructions},
-
-        # Example 1
-        {"type": "input_text", "text": "**Example 1:**"},
-        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_example1}"},
-        {"type": "input_text", "text": "Label: crystals\nExplanation: Distinct crystal structures can be seen forming in the droplet."},
-
-        # Example 2
-        {"type": "input_text", "text": "**Example 2:**"},
-        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_example2}"},
-        {"type": "input_text", "text": "Label: clear\nExplanation: The droplet is transparent and shows no visible particles or structures."},
-
-        # Example 3
-        {"type": "input_text", "text": "**Example 3:**"},
-        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_example3}"},
-        {"type": "input_text", "text": "Label: precipitate\nExplanation: Granular particles are scattered across the droplet indicating precipitation."},
-
-        # Example 4
-        {"type": "input_text", "text": "**Example 4:**"},
-        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_example4}"},
-        {"type": "input_text", "text": "Label: other\nExplanation: The image shows unexpected structures which are not clear solution, crystals, or precipitate."},
-
-        # Now the actual test image
-        {"type": "input_text", "text": "**Now classify the following image:**"},
-        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_test}"},
-    ]
-
-    return input_items
-
-def classify(image: Image.Image) -> str:
-
-    # Dump image
-    image_savepath = "input_image.png"
-    image.save(image_savepath)
+def interpret(image: Image.Image) -> str:
 
     # Use cache if available
-    hash_key = hash_image(image_savepath)
+    hash_key = hash_image(image)
     if hash_key in CACHE:
         return CACHE[hash_key]
 
-    # Prepare the prompt
-    prompts = get_prpmpt(image_savepath)
-
-    # Call the model
-    response = CLIENT.responses.create(
-        model="gpt-4.1",
-        input=[
-            {
-                "role": "user",
-                "content": prompts,
-            }
-        ],
-        temperature=0.2,
+    interpreter = CrystallizationInterpreter(
+        openai_client=CLIENT,
+        image=image,
+        llm="gpt-4.1",
     )
+    classification_output = interpreter.classify_image()
+    caption_output = interpreter.generate_image_caption()
+    interpreter._cleanup_image()
 
     # Save the result to cache
-    CACHE[hash_key] = response.output_text
+    CACHE[hash_key] = [classification_output, caption_output]
     save_cache(CACHE)
 
-    # Clean up
-    os.remove(image_savepath)
-
-    return response.output_text
+    return [classification_output, caption_output]
 
 # Example images for Gradio
 example_images = [
@@ -163,19 +95,20 @@ with gr.Blocks() as demo:
             image_input = gr.Image(type="pil", label="Input Image")
             submit_btn = gr.Button("Submit", variant="primary")
         with gr.Column():
-            output_text = gr.Textbox(label="Classification Result")
+            output_classification = gr.Textbox(label="Classification Result")
+            output_caption = gr.Textbox(label="Image Caption")
             clear_btn = gr.Button("Clear Result")
             clear_cache_btn = gr.Button("🧹 Clear Cache")
 
-    submit_btn.click(fn=classify, inputs=image_input, outputs=output_text)
-    clear_btn.click(fn=lambda: "", inputs=None, outputs=output_text)
-    clear_cache_btn.click(fn=clear_cache, outputs=output_text)
+    submit_btn.click(fn=interpret, inputs=image_input, outputs=[output_classification, output_caption])
+    clear_btn.click(fn=lambda: ["", ""], inputs=None, outputs=[output_classification, output_caption])
+    clear_cache_btn.click(fn=clear_cache, outputs=[output_classification, output_caption])
 
     gr.Examples(
         label="Test Images You Can Try",
         examples=example_images,
         inputs=image_input,
-        outputs=output_text,
+        outputs=[output_classification, output_caption],
         cache_examples=False,
     )
 

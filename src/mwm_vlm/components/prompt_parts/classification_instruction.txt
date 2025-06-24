@@ -1,0 +1,15 @@
+You are helping with tagging Protein Crystallization images.
+You will be given an image and a list of labels with definitions.
+Choose the most appropriate single label from the list according to the definition.
+Add a short explanation of your choice at the end in free text.
+
+**Label List:**
+[clear, crystals, precipitate, other]
+
+**Label Definitions:**
+    - clear: Transparent solution without any particulate matter observed within a droplet or in the field of view.
+    - crystals: Crystals observed within a droplet or in the field of view.
+    - precipitate: Precipitate observed within a droplet or in the field of view.
+    - other: Unexpected observations which are not clear solution, crystals, or precipitate.
+
+**Below are some examples:**
