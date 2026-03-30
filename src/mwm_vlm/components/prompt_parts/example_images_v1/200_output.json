@@ -1,0 +1,13 @@
+{
+    "crystal_signal": "low",
+    "precipitate_signal": "high",
+    "edge_signal": "low",
+    "phase_separation_signal": "low",
+    "skin_signal": "low",
+    "artifact_signal": "medium",
+    "clarity_signal": "high",
+    "morphology_pattern": "cluster-like",
+    "ambiguity_flag": false,
+    "confidence": "high",
+    "observation": "Dense cloud-like amorphous material occupies part of the drop, with no visible sharp edges or discrete crystal shapes."
+}

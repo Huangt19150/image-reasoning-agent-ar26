@@ -1,27 +1,6 @@
 import os
+import json
 from mwm_vlm.utils.common import encode_image
-
-def get_prompt_v2(image_path):
-    """
-    For image captioning.
-    """
-    with open(
-        os.path.join(os.path.dirname(__file__), "prompt_parts/captioning_instruction.txt"),
-        "r") as file:
-        instructions = file.read()
-
-    # Base64 encode the test image
-    base64_test = encode_image(image_path)
-
-    # Prepare the input items for the prompt
-    input_items = [
-        {"type": "input_text", "text": instructions},
-        # Now the actual test image
-        {"type": "input_text", "text": "**Now generate caption for the following image:**"},
-        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_test}"},
-    ]
-
-    return input_items
 
 def get_prompt_v1(image_path):
     """
@@ -37,7 +16,7 @@ def get_prompt_v1(image_path):
 
     # Prepare the common part of the prompt
     with open(
-        os.path.join(os.path.dirname(__file__), "prompt_parts/classification_instruction.txt"),
+        os.path.join(os.path.dirname(__file__), "prompt_parts/feature_extraction_instruction.txt"),
         "r") as f:
         instructions = f.read()
 
@@ -48,25 +27,25 @@ def get_prompt_v1(image_path):
         # Example 1
         {"type": "input_text", "text": "**Example 1:**"},
         {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_example1}"},
-        {"type": "input_text", "text": "Label: crystals\nExplanation: Distinct crystal structures can be seen forming in the droplet."},
+        {"type": "input_text", "text": json.dumps(json.load(open(os.path.join(os.path.dirname(__file__), "prompt_parts/example_images_v1/6488_output.json")))) },
 
         # Example 2
         {"type": "input_text", "text": "**Example 2:**"},
         {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_example2}"},
-        {"type": "input_text", "text": "Label: clear\nExplanation: The droplet is transparent and shows no visible particles or structures."},
+        {"type": "input_text", "text": json.dumps(json.load(open(os.path.join(os.path.dirname(__file__), "prompt_parts/example_images_v1/220_output.json")))) },
 
         # Example 3
         {"type": "input_text", "text": "**Example 3:**"},
         {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_example3}"},
-        {"type": "input_text", "text": "Label: precipitate\nExplanation: Granular particles are scattered across the droplet indicating precipitation."},
+        {"type": "input_text", "text": json.dumps(json.load(open(os.path.join(os.path.dirname(__file__), "prompt_parts/example_images_v1/200_output.json")))) },
 
         # Example 4
         {"type": "input_text", "text": "**Example 4:**"},
         {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_example4}"},
-        {"type": "input_text", "text": "Label: other\nExplanation: The image shows unexpected structures which are not clear solution, crystals, or precipitate."},
+        {"type": "input_text", "text": json.dumps(json.load(open(os.path.join(os.path.dirname(__file__), "prompt_parts/example_images_v1/9123_output.json")))) },
 
         # Now the actual test image
-        {"type": "input_text", "text": "**Now classify the following image:**"},
+        {"type": "input_text", "text": "**Now extract features from the following image:**"},
         {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_test}"},
     ]
 

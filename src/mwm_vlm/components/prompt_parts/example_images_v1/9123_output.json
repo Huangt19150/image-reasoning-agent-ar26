@@ -1,0 +1,13 @@
+{
+    "crystal_signal": "medium",
+    "precipitate_signal": "medium",
+    "edge_signal": "low",
+    "phase_separation_signal": "medium",
+    "skin_signal": "low",
+    "artifact_signal": "high",
+    "clarity_signal": "medium",
+    "morphology_pattern": "unknown",
+    "ambiguity_flag": true,
+    "confidence": "low",
+    "observation": "Irregular dense regions and diffuse structures are present within the drop, with no clear edges; the appearance may reflect phase separation or aggregated material."
+}
