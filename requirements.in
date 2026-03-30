@@ -1,0 +1,31 @@
+# Jupyter Notebook dependencies
+ipykernel
+
+# LLMs
+transformers
+hf-xet
+accelerate
+openai
+
+# RAG related
+langchain
+langchain-community
+langchain-chroma
+langchain-huggingface
+langchain-openai
+pypdf
+
+# Visualization
+matplotlib
+seaborn
+grandalf
+
+# Local packages
+-e .
+
+# App
+gradio
+
+# LangGraph
+langgraph
+langchain-core

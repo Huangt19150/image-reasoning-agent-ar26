@@ -67,3 +67,6 @@ app/model/model.pth
 
 # Figures
 figures/private
+
+# VSCode
+.vscode
