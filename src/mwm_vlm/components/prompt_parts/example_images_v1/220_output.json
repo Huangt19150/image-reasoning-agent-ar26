@@ -1,0 +1,13 @@
+{
+    "crystal_signal": "low",
+    "precipitate_signal": "low",
+    "edge_signal": "low",
+    "phase_separation_signal": "low",
+    "skin_signal": "low",
+    "artifact_signal": "low",
+    "clarity_signal": "high",
+    "morphology_pattern": "none",
+    "ambiguity_flag": false,
+    "confidence": "high",
+    "observation": "The drop appears clear with no visible particles, precipitate, or crystal-like structures."
+}
