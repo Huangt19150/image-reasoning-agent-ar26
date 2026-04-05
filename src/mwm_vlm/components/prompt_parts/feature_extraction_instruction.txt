@@ -6,6 +6,7 @@ Your task is to extract structured visual observations from the image.
 Important guidance:
 - In crystallization screening, useful observations include not only crystals, but also clear drops, precipitate, phase separation, skin on the drop, and amorphous debris or artifacts.
 - Crystals typically show edges. Precipitate does not have edges.
+- If well-defined edges and geometric structure are present, do NOT classify as debris unless strong evidence suggests otherwise.
 - Microcrystals can be difficult to distinguish from precipitate, so uncertain cases must be marked as ambiguous and low-confidence.
 - Be conservative. Do not over-interpret the image.
 - Do not claim experimental success, optimization potential, or biological conclusions.
@@ -30,7 +31,7 @@ Return ONLY valid JSON with the following schema:
   "skin_signal": "low|medium|high",
   "artifact_signal": "low|medium|high",
   "clarity_signal": "low|medium|high",
-  "morphology_pattern": "none|unknown|needle-like|plate-like|block-like|cluster-like|microcrystalline-like|spherulite-like",
+  "morphology_pattern": "none|unknown|amorphous-like|needle-like|plate-like|block-like|cluster-like|microcrystalline-like|spherulite-like",
   "ambiguity_flag": true,
   "confidence": "low|medium|high",
   "observation": "One to two cautious sentences describing only visible morphology."

@@ -1,0 +1,13 @@
+{
+    "crystal_signal": "low",
+    "precipitate_signal": "high",
+    "edge_signal": "low",
+    "phase_separation_signal": "low",
+    "skin_signal": "low",
+    "artifact_signal": "medium",
+    "clarity_signal": "high",
+    "morphology_pattern": "cluster-like",
+    "ambiguity_flag": true,
+    "confidence": "low",
+    "observation": "Dense granular structures are present within part of the drop, forming a clustered region without clearly defined edges; the appearance is consistent with amorphous precipitate but could overlap with microcrystalline features."
+}

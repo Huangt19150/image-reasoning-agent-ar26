@@ -1,0 +1,13 @@
+{
+    "crystal_signal": "high",
+    "precipitate_signal": "low",
+    "edge_signal": "high",
+    "phase_separation_signal": "low",
+    "skin_signal": "low",
+    "artifact_signal": "low",
+    "clarity_signal": "high",
+    "morphology_pattern": "block-like",
+    "ambiguity_flag": false,
+    "confidence": "high",
+    "observation": "Multiple well-defined geometric crystals with sharp edges are visible, separated and clearly distinguishable from the background."
+}

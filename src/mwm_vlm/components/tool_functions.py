@@ -1,4 +1,5 @@
 from PIL import Image
+import json
 from openai import OpenAI
 from interpreter import CrystallizationInterpreter
 
@@ -19,11 +20,6 @@ def extract_features_from_image(image_path: str, client: OpenAI) -> str:
     )
 
     # Extract features from the image
-    classification = interpreter.extract_features_from_image()
+    features = interpreter.extract_features_from_image()
 
-    return classification
-
-# Your available tools dictionary
-tools_map = {
-    "extract_features_from_image": extract_features_from_image
-}
+    return json.dumps(features, ensure_ascii=False)

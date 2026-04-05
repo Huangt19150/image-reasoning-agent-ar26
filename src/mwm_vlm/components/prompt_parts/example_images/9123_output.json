@@ -1,0 +1,13 @@
+{
+    "crystal_signal": "low",
+    "precipitate_signal": "medium",
+    "edge_signal": "low",
+    "phase_separation_signal": "medium",
+    "skin_signal": "medium",
+    "artifact_signal": "low",
+    "clarity_signal": "low",
+    "morphology_pattern": "amorphous-like",
+    "ambiguity_flag": false,
+    "confidence": "high",
+    "observation": "A dense, irregular mass with smooth, diffuse boundaries is present, showing continuous internal texture without defined edges or faceting; the morphology is consistent with phase separation or amorphous aggregation rather than crystalline growth."
+}
