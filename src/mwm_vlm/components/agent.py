@@ -90,6 +90,14 @@ PARSED_FEATURE_DEFAULTS: dict[str, Any] = {
     "observation": "",
 }
 
+FINAL_REPORT_DEFAULTS: dict[str, str] = {
+    "observation": "",
+    "possible_interpretation": "",
+    "supporting_context": "",
+    "confidence": "low",
+    "recommended_next_step": "",
+}
+
 
 def _build_current_case_summary(state: AgentState) -> str:
     """Build a query text that mirrors the style of case['retrieval_text']."""
@@ -241,6 +249,42 @@ def _build_parsed_feature_state(payload: dict[str, Any]) -> dict[str, Any]:
         for key, default_value in PARSED_FEATURE_DEFAULTS.items()
     }
 
+
+def _strip_code_fence(text: str) -> str:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        return "\n".join(lines).strip()
+    return stripped
+
+
+def _normalize_final_report_payload(payload: dict[str, Any]) -> dict[str, str]:
+    confidence = str(payload.get("confidence", "low")).strip().lower()
+    if confidence not in {"low", "medium", "high"}:
+        confidence = "low"
+
+    return {
+        "observation": str(payload.get("observation", "")).strip(),
+        "possible_interpretation": str(payload.get("possible_interpretation", "")).strip(),
+        "supporting_context": str(payload.get("supporting_context", "")).strip(),
+        "confidence": confidence,
+        "recommended_next_step": str(payload.get("recommended_next_step", "")).strip(),
+    }
+
+
+def _parse_final_report(content: Any) -> dict[str, str]:
+    try:
+        parsed = json.loads(_strip_code_fence(str(content)))
+        if isinstance(parsed, dict):
+            return _normalize_final_report_payload(parsed)
+    except Exception:
+        pass
+    return FINAL_REPORT_DEFAULTS.copy()
+
 # ==========================================
 # 2. Bind Tools
 # ==========================================
@@ -374,11 +418,11 @@ def final_output_node(state: AgentState) -> dict[str, Any]:
         )
 
         response = LLM.invoke([HumanMessage(content=final_prompt)])
-        final_report = str(response.content)
+        final_report = _parse_final_report(response.content)
 
         print("✅ Final Output Node: final report generated.")
         print("\n🧾 ================== FINAL REPORT ==================")
-        print(final_report)
+        print(json.dumps(final_report, ensure_ascii=False, indent=2))
         print("📘 ==================================================\n")
 
         return {
@@ -386,14 +430,16 @@ def final_output_node(state: AgentState) -> dict[str, Any]:
             "messages": [response],
         }
     except Exception as e:
-        error_report = f"Final output generation failed: {e}"
-        print(f"⚠️  Final Output Node: {error_report}")
+        error_message = f"Final output generation failed: {e}"
+        error_report = FINAL_REPORT_DEFAULTS.copy()
+        error_report["supporting_context"] = error_message
+        print(f"⚠️  Final Output Node: {error_message}")
         print("\n🧾 ================== FINAL REPORT ==================")
-        print(error_report)
+        print(json.dumps(error_report, ensure_ascii=False, indent=2))
         print("📘 ==================================================\n")
         return {
             "final_report": error_report,
-            "messages": [AIMessage(content=error_report)],
+            "messages": [AIMessage(content=error_message)],
         }
 
 

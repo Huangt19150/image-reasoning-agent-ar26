@@ -151,28 +151,24 @@ Use patterns like:
 
 ---
 
-## Output Format
+## Output Format (STRICT JSON)
 
-Observation:
-- concise, factual, morphology-focused
-- avoid speculative language
+Return ONLY a valid JSON object. Do not return markdown, prose, code fences, or extra keys.
 
-Possible interpretation:
-- 1–2 hypotheses only
-- do not repeat the observation
-- prefer short, direct statements
+Required keys and value types:
+{
+  "observation": "string",
+  "possible_interpretation": "string",
+  "supporting_context": "string",
+  "confidence": "low|medium|high",
+  "recommended_next_step": "string"
+}
 
-Supporting context:
-- reference retrieved cases briefly (1 line max)
-- do NOT explain the case in detail
-- if none: 
-  - if confidence = high AND ambiguity_flag = False: state "Retrieval skipped."
-  - else: state "No close reference case found."
-
-Confidence:
-low | medium | high
-
-Recommended next step:
-- very short, action-oriented (1 sentence)
-- prefer: monitor / re-image / record / manual review
-- avoid multi-step or procedural descriptions
+Content constraints:
+- observation: concise, factual, morphology-focused; avoid speculative language
+- possible_interpretation: 1-2 hypotheses; do not repeat observation; prefer short, direct statements
+- supporting_context: reference retrieved cases briefly (1 line max); do NOT explain the case in detail; if none, use:
+  - "Retrieval skipped." when confidence=high and ambiguity_flag=False
+  - otherwise "No close reference case found."
+- confidence: must be exactly one of low, medium, high
+- recommended_next_step: one short action-oriented sentence; prefer: monitor / re-image / record / manual review; avoid multi-step or procedural descriptions
