@@ -7,6 +7,10 @@ from PIL import Image
 import gradio as gr
 from langchain_core.messages import HumanMessage
 
+# NOTE: Deploy to hugging face space ONLY: Add the src directory to the Python path
+# import sys
+# sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+
 from mwm_vlm.components.agent import build_image_reasoning_agent
 
 
