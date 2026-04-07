@@ -615,7 +615,9 @@ if __name__ == "__main__":
         save_agent_graph_structure(agent_app, AGENT_GRAPH_STRUCTURE_ROOT_PATH)
 
     # ⚠️ Please ensure there is a real test image at this path, or change it to an existing relative/absolute path
-    test_image_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "data", "test", "1209.jpeg")
+    test_image_path = ""
+    # "/Users/thuang/Documents/Personal/code/image-reasoning-agent-ar26/data/marco/gsk/crystals/3.jpeg"
+    # os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "data", "test", "1209.jpeg")
     
     # Build your initial prompt, since our tool implements the logic of "using the base model for image classification"
     # We directly let the Agent use the tool to provide the classification result

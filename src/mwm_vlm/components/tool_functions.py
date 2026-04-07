@@ -1,7 +1,12 @@
 from PIL import Image
 import json
+import importlib
 from openai import OpenAI
-from .interpreter import CrystallizationInterpreter
+
+try:
+    from .interpreter import CrystallizationInterpreter
+except ImportError:
+    CrystallizationInterpreter = importlib.import_module("interpreter").CrystallizationInterpreter
 
 
 def extract_features_from_image(image_path: str, client: OpenAI) -> str:
