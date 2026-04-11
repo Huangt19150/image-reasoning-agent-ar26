@@ -8,6 +8,28 @@ EXAMPLE_IMAGES_DIR = os.path.join(PROMPT_PARTS_DIR, "example_images")
 SUPPORTED_IMAGE_SUFFIXES = (".jpeg", ".jpg", ".png", ".webp")
 
 
+def build_input_gate_prompt(user_request: str, image_path: str) -> str:
+    """Build a strict gate prompt for in-scope vs out-of-scope routing."""
+    b64 = encode_image(image_path)
+    gate_text = f"""You are the input gate for a protein crystallization image agent.
+Task: make a simple scope decision only.
+
+In-scope means: the request/image is microscopy-style well/drop crystal images about protein crystallization screening.
+Out-of-scope means: anything else (e.g., natural photos, documents, charts, non-microscopy scenes).
+
+Rules:
+1) If in-scope: call extract_features_from_image_tool exactly once.
+2) If out-of-scope: do NOT call any tool, and reply: "This agent specializes in protein crystallization screening images. Since this image appears outside that domain, I'll stop without further analysis.".
+3) Keep your output minimal.
+
+User request:
+{user_request}"""
+    return [
+        {"type": "text", "text": gate_text},
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+    ]
+
+
 def _find_example_image(example_id: str) -> str:
     for suffix in SUPPORTED_IMAGE_SUFFIXES:
         candidate = os.path.join(EXAMPLE_IMAGES_DIR, f"{example_id}{suffix}")

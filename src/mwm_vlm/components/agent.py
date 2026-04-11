@@ -1,6 +1,7 @@
 import os
 import json
 import importlib
+import sys
 from dotenv import load_dotenv
 import operator
 from typing import Annotated, Literal, Sequence, TypedDict, Any
@@ -16,11 +17,16 @@ try:
 except ImportError:
     t = importlib.import_module("tool_functions")
 
+try:
+    from . import prompt as p
+except ImportError:
+    p = importlib.import_module("prompt")
+
 # Load environment variables
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# This is for LangGraph agent "brain"
+# LLM used by graph reasoning nodes
 LLM = ChatOpenAI(
     api_key=OPENAI_API_KEY,
     model="gpt-5.4",
@@ -34,7 +40,7 @@ RAW_CLIENT = OpenAI(api_key=OPENAI_API_KEY)
 # 1. Define the State
 # ==========================================
 # ── Field contract ──────────────────────────────────────────────────────────
-# confidence    : one of "high" | "medium" | "low"  (set by parse_result_node)
+# confidence    : one of "high" | "medium" | "low"  (set by assess_uncertainty_node)
 # ambiguity_flag: True  → the image is ambiguous and needs extra context
 #                 False → the image is clear and can be classified directly
 # All *_signal fields mirror the JSON output from extract_features_from_image.
@@ -61,7 +67,9 @@ class AgentState(TypedDict):
     retrieved_cases: list[dict[str, Any]]
     final_report: str
 
-AGENT_GRAPH_STRUCTURE_ROOT_PATH = "/Users/thuang/Documents/Personal/code/image-reasoning-ar26/research/agent_structure_graph"
+AGENT_GRAPH_STRUCTURE_ROOT_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "research", "agent_structure_graph")
+)
 
 CASE_LIBRARY_PATH = os.path.join(
     os.path.dirname(__file__),
@@ -307,14 +315,15 @@ AVAILABLE_TOOLS = {
 # ==========================================
 # 3. Define Nodes
 # ==========================================
-def agent_node(state: AgentState) -> dict[str, Any]:
+def input_gate_node(state: AgentState) -> dict[str, Any]:
     """
-    The 'Brain' node. Calls the Vision Language Model (VLM).
+    Entry node that evaluates the request and decides whether to proceed in-scope.
     """
     messages = state["messages"]
 
     print("🧠 Agent Node: Thinking...")
-    
+
+    # Input gate runs directly on the provided prompt message.
     response = bound_llm.invoke(messages)
     
     if response.tool_calls:
@@ -324,9 +333,9 @@ def agent_node(state: AgentState) -> dict[str, Any]:
     
     return {"messages": [response]} 
 
-def tool_executor_node(state: AgentState) -> dict[str, Any]:
+def observe_image_tool_node(state: AgentState) -> dict[str, Any]:
     """
-    The 'Hand' node. Executes tools if requested by the VLM.
+    Tool execution node for image observation.
     """
     messages = state["messages"]
     last_message = messages[-1]
@@ -339,14 +348,14 @@ def tool_executor_node(state: AgentState) -> dict[str, Any]:
     # A real LLM might call multiple tools in parallel in a single response, so we need to iterate over them
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
-        tool_args = tool_call["args"]
+        tool_args = dict(tool_call["args"])
         tool_call_id = tool_call["id"]
         
+        # The uploaded/local file path lives in graph state. Tool-call args produced by the
+        # model may contain placeholders like "attached_image", so always use the state path.
+        tool_args["image_path"] = image_path
+
         print(f"   => Calling tool: {tool_name}, args: {tool_args}")
-        
-        # Sometimes the model might forget to pass the image path, we can protect against this by falling back to the global state's image_path
-        if "image_path" not in tool_args:
-             tool_args["image_path"] = image_path
              
         tool_instance = AVAILABLE_TOOLS.get(tool_name)
         if tool_instance:
@@ -361,7 +370,7 @@ def tool_executor_node(state: AgentState) -> dict[str, Any]:
         print(f"   => Tool result: {result}")
         
         # Core point: The tool execution result **must** be wrapped in a LangChain ToolMessage,
-        # and returned with the corresponding tool_call_id. This is the only way to pass the state back to the brain (agent) so it recognizes the relationship.
+        # and returned with the corresponding tool_call_id so the upstream reasoning can associate results correctly.
         tool_messages.append(ToolMessage(
             content=str(result), 
             tool_call_id=tool_call_id
@@ -369,44 +378,43 @@ def tool_executor_node(state: AgentState) -> dict[str, Any]:
         
     return {"messages": tool_messages}
 
-def parse_result_node(state: AgentState) -> dict[str, Any]:
+def assess_uncertainty_node(state: AgentState) -> dict[str, Any]:
     """
-    The 'Parser' node. Reads the raw JSON string returned by the feature extraction
-    tool and writes the structured fields into the agent state.
+    Reads the raw JSON string returned by image observation and writes
+    structured uncertainty fields into state.
 
     Why a separate node?
-    The tool returns a plain text string. Before any routing decision can be made,
-    someone has to parse that string and promote it to typed state fields. Keeping
-    this step in its own node means: if the tool output format changes, only this
-    node needs updating — the routing logic stays untouched.
+    The tool returns a plain text payload. Before routing, it must be parsed and
+    promoted to typed state fields. Keeping this isolated means routing logic stays
+    stable even if tool payload format changes.
     """
-    print("📋 Parse Node: Extracting structured fields from tool output...")
+    print("📋 Assess Uncertainty Node: Extracting structured fields from tool output...")
 
     last_tool_message = _get_latest_tool_message(state["messages"])
     if last_tool_message is None:
-        print("⚠️  Parse Node: No tool message found. Defaulting to conservative values.")
+        print("⚠️  Assess Uncertainty Node: No tool message found. Defaulting to conservative values.")
         return PARSED_FEATURE_DEFAULTS.copy()
 
     try:
         data = json.loads(last_tool_message.content)
         parsed_state = _build_parsed_feature_state(data)
         print(
-            f"✅ Parse Node: confidence={parsed_state.get('confidence')}, "
+            f"✅ Assess Uncertainty Node: confidence={parsed_state.get('confidence')}, "
             f"ambiguity_flag={parsed_state.get('ambiguity_flag')}"
         )
         return parsed_state
     except json.JSONDecodeError as e:
-        # Fail-safe: a parse failure routes to the cautious retrieve_cases branch
-        print(f"⚠️  Parse Node: JSON parse failed ({e}). Defaulting to conservative values.")
+        # Fail-safe: parsing failure takes the conservative retrieval path
+        print(f"⚠️  Assess Uncertainty Node: JSON parse failed ({e}). Defaulting to conservative values.")
         return PARSED_FEATURE_DEFAULTS.copy()
 
 
-def final_output_node(state: AgentState) -> dict[str, Any]:
+def generate_report_node(state: AgentState) -> dict[str, Any]:
     """
     Generates the final reasoning output report.
     Supports both direct path and retrieve-then-final path.
     """
-    print("📤 Final Output Node: generating final report...")
+    print("📤 Report Generator Node: generating final report...")
 
     try:
         instruction = _load_final_output_instruction()
@@ -420,7 +428,7 @@ def final_output_node(state: AgentState) -> dict[str, Any]:
         response = LLM.invoke([HumanMessage(content=final_prompt)])
         final_report = _parse_final_report(response.content)
 
-        print("✅ Final Output Node: final report generated.")
+        print("✅ Report Generator Node: final report generated.")
         print("\n🧾 ================== FINAL REPORT ==================")
         print(json.dumps(final_report, ensure_ascii=False, indent=2))
         print("📘 ==================================================\n")
@@ -433,7 +441,7 @@ def final_output_node(state: AgentState) -> dict[str, Any]:
         error_message = f"Final output generation failed: {e}"
         error_report = FINAL_REPORT_DEFAULTS.copy()
         error_report["supporting_context"] = error_message
-        print(f"⚠️  Final Output Node: {error_message}")
+        print(f"⚠️  Report Generator Node: {error_message}")
         print("\n🧾 ================== FINAL REPORT ==================")
         print(json.dumps(error_report, ensure_ascii=False, indent=2))
         print("📘 ==================================================\n")
@@ -505,7 +513,7 @@ def retrieve_cases_node(state: AgentState) -> dict[str, Any]:
 # ==========================================
 def route_by_confidence(state: AgentState) -> str:
     """
-    Conditional edge function: decides the next node after parse_result_node.
+    Conditional edge function: decides the branch after uncertainty assessment.
 
     Why a conditional edge function and NOT a node?
     This function does zero computation — it only reads two already-populated
@@ -517,27 +525,27 @@ def route_by_confidence(state: AgentState) -> str:
     ambiguity_flag = state.get("ambiguity_flag", True)
 
     if confidence == "high" and ambiguity_flag is False:
-        print("🔀 Router: confidence=high, ambiguity=False → final_output")
-        return "final_output"
+        print("🔀 Router: confidence=high, ambiguity=False → report_generator")
+        return "direct"
     else:
-        print(f"🔀 Router: confidence={confidence}, ambiguity={ambiguity_flag} → retrieve_cases")
-        return "retrieve_cases"
+        print(f"🔀 Router: confidence={confidence}, ambiguity={ambiguity_flag} → case_retriever")
+        return "retrieve"
 
 
-def should_continue(state: AgentState) -> str:
+def route_input_scope(state: AgentState) -> str:
     """
-    Controls the flow. Checks if the agent wants to use a tool or finish.
+    Controls entry routing: in-scope image workflow vs early exit.
     """
     messages = state["messages"]
     last_message = messages[-1]
     
     # Check if the last Message generated by the LLM contains a tool invocation (tool_calls) field
     if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
-        # The model wants to use a tool, proceed to Action
-        return "continue"
+        # The model wants to use a tool, proceed to image observation
+        return "in_scope"
     else:
         # No tool invocation, the model gives the final conclusion, proceed to END
-        return "end"
+        return "out_of_scope"
 
 # ==========================================
 # 5. Build and Compile the Graph
@@ -546,53 +554,39 @@ def build_image_reasoning_agent():
     # Initialize the graph with our state definition
     workflow = StateGraph(AgentState)
 
-    # --- Existing nodes ---
-    workflow.add_node("agent", agent_node)
-    workflow.add_node("action", tool_executor_node)
-
-    # --- New nodes ---
-    # parse_result: promotes the raw tool string into typed state fields
-    # final_output / retrieve_cases: the two downstream reasoning branches
-    workflow.add_node("parse_result", parse_result_node)
-    workflow.add_node("final_output", final_output_node)
-    workflow.add_node("retrieve_cases", retrieve_cases_node)
+    # Add nodes to the graph
+    workflow.add_node("input_router", input_gate_node)
+    workflow.add_node("image_observer", observe_image_tool_node)
+    workflow.add_node("uncertainty_router", assess_uncertainty_node)
+    workflow.add_node("case_retriever", retrieve_cases_node)
+    workflow.add_node("report_generator", generate_report_node)
 
     # Set the starting point
-    workflow.set_entry_point("agent")
+    workflow.set_entry_point("input_router")
 
-    # agent → did LLM ask for a tool?
-    #   yes ("continue") → action
-    #   no  ("end")      → END  (edge case: agent decides not to use any tool)
+    # Define edges between nodes, including conditional edges for routing
     workflow.add_conditional_edges(
-        "agent",
-        should_continue,
+        "input_router",
+        route_input_scope,
         {
-            "continue": "action",
-            "end": END
+            "in_scope": "image_observer",
+            "out_of_scope": END
         }
     )
 
-    # action → parse_result
-    # Previously this looped back to agent. Now we hand off to the parser
-    # so that structured fields are available for the routing decision.
-    workflow.add_edge("action", "parse_result")
+    workflow.add_edge("image_observer", "uncertainty_router")
 
-    # parse_result → route_by_confidence decides the branch
-    #   "final_output"  → final_output_node
-    #   "retrieve_cases" → retrieve_cases_node
     workflow.add_conditional_edges(
-        "parse_result",
+        "uncertainty_router",
         route_by_confidence,
         {
-            "final_output": "final_output",
-            "retrieve_cases": "retrieve_cases",
+            "direct": "report_generator",
+            "retrieve": "case_retriever",
         }
     )
 
-    # Both paths converge at final_output, which generates the reasoning report.
-    # retrieve_cases feeds its results into final_output as additional context.
-    workflow.add_edge("retrieve_cases", "final_output")
-    workflow.add_edge("final_output", END)
+    workflow.add_edge("case_retriever", "report_generator")
+    workflow.add_edge("report_generator", END)
 
     # Compile the state machine into an executable app
     app = workflow.compile()
@@ -615,13 +609,19 @@ if __name__ == "__main__":
         save_agent_graph_structure(agent_app, AGENT_GRAPH_STRUCTURE_ROOT_PATH)
 
     # ⚠️ Please ensure there is a real test image at this path, or change it to an existing relative/absolute path
-    test_image_path = ""
+    test_image_path = "/Users/thuang/Documents/Personal/code/image-reasoning-agent-ar26/data/ooc_image/IMG_0442.jpg"
     # "/Users/thuang/Documents/Personal/code/image-reasoning-agent-ar26/data/marco/gsk/crystals/3.jpeg"
     # os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "data", "test", "1209.jpeg")
     
-    # Build your initial prompt, since our tool implements the logic of "using the base model for image classification"
-    # We directly let the Agent use the tool to provide the classification result
-    initial_prompt = f"The image is located at this local path: '{test_image_path}'. Please use the extract_features_from_image_tool to extract features from it."
+    if os.path.getsize(test_image_path) > 1 * 1024 * 1024:
+        print("⚠️ Image too large (>1 MB). Please use a smaller image.")
+        sys.exit(0)
+
+    # Build one gate prompt only: classify scope first, then call tool if in-scope.
+    initial_prompt = p.build_input_gate_prompt(
+        user_request="",
+        image_path=test_image_path,
+    )
     
     # Initialize input state
     initial_state = {

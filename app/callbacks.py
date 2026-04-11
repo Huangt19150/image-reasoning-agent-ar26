@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 import uuid
 
@@ -6,8 +7,8 @@ from PIL import Image
 from langchain_core.messages import HumanMessage
 
 from mwm_vlm.components.agent import build_image_reasoning_agent
+from mwm_vlm.components.prompt import build_input_gate_prompt
 from ui_helpers import (
-    _build_agent_prompt,
     _resolve_summary_transition_delay_sec,
     _format_stream_update,
     _empty_features_html,
@@ -24,15 +25,28 @@ AGENT_APP = build_image_reasoning_agent()
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_uploads")
 
 
-def _save_uploaded_image(image: Image.Image) -> str:
+def _save_uploaded_image(source_path: str) -> str:
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-    path = os.path.join(UPLOAD_DIR, f"upload_{uuid.uuid4().hex}.png")
-    image.save(path)
+    suffix = os.path.splitext(source_path)[1].lower() or ".png"
+    path = os.path.join(UPLOAD_DIR, f"upload_{uuid.uuid4().hex}{suffix}")
+    shutil.copy2(source_path, path)
     return path
 
 
 def _stream_agent(image_path: str, user_text: str):
-    prompt = _build_agent_prompt(image_path, user_text)
+    """Stream graph updates and UI payloads for chat, evidence, and final report.
+
+    Node mapping (new semantics):
+    - image_observer: emits extracted features
+    - uncertainty_router: controls initial-delay reveal timing
+    - case_retriever: emits similar case cards
+    - report_generator: emits final report payload
+    """
+    if os.path.getsize(image_path) > 1 * 1024 * 1024:
+        yield "<div class='agent-intro'>⚠️ Image too large (&gt;1 MB). Please upload a smaller image.</div>", "", _empty_features_html(), _empty_cases_html()
+        return
+
+    prompt = build_input_gate_prompt(user_request=user_text, image_path=image_path)
     initial_state = {
         "messages": [HumanMessage(content=prompt)],
         "image_path": image_path,
@@ -46,14 +60,15 @@ def _stream_agent(image_path: str, user_text: str):
     for step_output in AGENT_APP.stream(initial_state):
         for node_name, node_update in step_output.items():
             if isinstance(node_update, dict):
-                if node_name == "action":
+                if node_name == "image_observer":
+                    # Keep extracted features hidden until uncertainty_router initial delay finishes.
                     extracted_features = _extract_features_from_messages(node_update.get("messages", []))
                     if extracted_features:
                         pending_features_html = _render_features_html(extracted_features)
-                elif node_name == "retrieve_cases":
+                elif node_name == "case_retriever":
                     cases_html = _render_cases_html(node_update.get("retrieved_cases", []))
 
-                if node_name == "parse_result":
+                if node_name == "uncertainty_router":
                     initial_block = _format_stream_update(
                         node_name,
                         node_update={},
@@ -69,6 +84,7 @@ def _stream_agent(image_path: str, user_text: str):
                     if initial_delay > 0:
                         time.sleep(initial_delay)
 
+                    # Reveal features only after the uncertainty initial phase.
                     features_html = pending_features_html
                     parsed_block = _format_stream_update(node_name, node_update)
                     stream_text = stream_text.replace(initial_block, parsed_block, 1)
@@ -110,7 +126,7 @@ def run_agent_chat(message, history):
         if raw:
             pil_image = Image.open(raw)
             pil_image.load()
-            image_path = _save_uploaded_image(pil_image)
+            image_path = _save_uploaded_image(raw)
 
     history = list(history or [])
 
@@ -143,11 +159,10 @@ def run_agent_chat(message, history):
 
 
 def run_agent_from_example(example_path: str):
+    """Run the same chat pipeline using a preloaded example image path."""
     example_path = (example_path or "").strip()
     if not example_path:
-        history = []
-        history.append(_msg("assistant", "No example image loaded."))
-        yield history, None, _empty_features_html(), _empty_cases_html(), ""
+        yield [], None, _empty_features_html(), _empty_cases_html(), ""
         return
 
     message = {"text": "", "files": [example_path]}
@@ -156,4 +171,5 @@ def run_agent_from_example(example_path: str):
 
 
 def clear_all():
+    """Reset chat history, evidence HTML blocks, image viewer, and example state."""
     return [], None, _empty_features_html(), _empty_cases_html(), None, None, ""

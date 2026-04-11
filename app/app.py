@@ -27,33 +27,80 @@ example_images = [
     if f.lower().endswith((".jpeg", ".jpg", ".png", ".gif", ".webp"))
 ]
 
+CHAT_INPUT_PLACEHOLDER = "Attach an image (message is optional), then press Enter..."
+CHAT_INPUT_LOCKED_PLACEHOLDER = "Analysis complete. Click 'Clear' to start another run, or try an example image."
+
+
+def _chat_input_state_after_example_change(example_path):
+    if example_path:
+        return gr.update(
+            value=None,
+            interactive=False,
+            placeholder=CHAT_INPUT_LOCKED_PLACEHOLDER,
+        )
+    return gr.update(
+        value=None,
+        interactive=True,
+        placeholder=CHAT_INPUT_PLACEHOLDER,
+    )
+
 
 # Gradio Interface
 with gr.Blocks() as demo:
-    gr.Markdown(
-        """
-        # 😼 Schrödinger's Crystals 💠
-        ## A MINI Proof-Of-Concept Protein Crystallization Image Reasoning Agent with GPT-5.4
-        Code available in this repo: [image-reasoning-agent-ar26](https://github.com/Huangt19150/image-reasoning-agent-ar26)
+    gr.Image(value="figures/logo.png", height=180, show_label=False)
 
-        ## 🔷 Why Protein Crystals:
-        Proteins are the tiny machines that keep all living things running, and understanding their shape is key to understanding how they work — and how to design new medicines.
-        One powerful way to figure out a protein's 3D structure is by turning it into a crystal and analyzing it with X-ray crystallography. But here's the catch: proteins don't like to crystallize. 
-        Scientists often need to run thousands of experiments just to grow one usable crystal.  
-        To this end, MARCO (MAchine Recognition of Crystallization Outcomes) was established to bring real-world crystallization data to the machine learning community.
-        The goal is to build smart tools that can automatically classify the outcomes of these tricky experiments. 
-        By helping scientists spot crystals faster and more accurately, these tools can accelerate discoveries in biology and medicine.
+    with gr.Row():
+        gr.Markdown(
+            """
+            ### A Proof-of-Concept Image Reasoning Agent for Protein Crystallization (powered by GPT-5.4) [Code Repo](https://github.com/Huangt19150/image-reasoning-agent-ar26)
+            """)
         
+    with gr.Row():
+        with gr.Column():
+            gr.Markdown(
+                """
+                ## 🤖 What This Agent Does
+                
+                1. extracts visual features  
+                2. estimates uncertainty  
+                3. retrieves similar cases (if needed)  
+                4. outputs a structured report with next-step recommendations  
 
-        ## 📋 Quick Start Guide:
-        1. Try one of the **Test Images** below to find the hidden crystals.
-        2. (Optional) Classification result is cached to save cost on API request. Trust me 🤗 or click `🧹 Clear Cache` then observe the real latency of the prediction request (5-10s).
-        3. Toggle the lists below to find out more insights!
+                **Not just "what is this?" — but "what should I do next?"**
+                """)
 
-        ## 📖 Reference:
-        1. Dataset & Background: [MARCO](https://marco.ccr.buffalo.edu/about).
-        """
-    )
+        with gr.Column():
+            gr.Markdown(
+                """
+                ## 😼 Why "Schrödinger's Crystal"?
+
+                Crystallization images are often ambiguous — not clearly “crystal” or “not crystal”.
+
+                The sample can be **both — until we reason about it**.
+
+                This agent is designed to resolve that **uncertainty** and support **decisions**.
+                """)
+
+        with gr.Column():
+            gr.Markdown(
+                """
+                ## 💠 Why Protein Crystals?
+
+                Protein crystallization is key for structure and drug discovery,  
+                but experiments are large-scale, noisy, and hard to interpret.
+
+                Datasets like [MARCO](https://marco.ccr.buffalo.edu/about) enable automated analysis —  
+                this project explores going further with **reasoning agents**.
+                """)
+            
+    with gr.Row():
+        gr.Markdown(
+            """
+            ## 📋 Quick Start
+
+            Try a **Test Image** or upload your own → the agent analyzes and recommends actions. ↓ Expand **How It Works** for agent graph and knowledge base.
+
+            """)
 
     image_path_state = gr.State("")
 
@@ -62,7 +109,7 @@ with gr.Blocks() as demo:
             gr.Markdown("## Agent Panel")
             agent_chatbot = gr.Chatbot(label="Agent Demo", height=500, sanitize_html=False, elem_id="agent-chatbot")
             chat_input = gr.MultimodalTextbox(
-                placeholder="Attach an image and type your message, then press Enter...",
+                placeholder=CHAT_INPUT_PLACEHOLDER,
                 file_types=["image"],
                 file_count="single",
                 submit_btn=True,
@@ -87,100 +134,71 @@ with gr.Blocks() as demo:
         inputs=[chat_input, agent_chatbot],
         outputs=[agent_chatbot, image_viewer, features_view, similar_cases_view],
     )
-    submit_event.then(fn=lambda: None, inputs=None, outputs=[chat_input])
+    submit_event.then(
+        fn=lambda: gr.update(
+            value=None,
+            interactive=False,
+            placeholder=CHAT_INPUT_LOCKED_PLACEHOLDER,
+        ),
+        inputs=None,
+        outputs=[chat_input],
+    )
 
-    example_image_input.change(
+    example_change_event = example_image_input.change(
         fn=run_agent_from_example,
         inputs=[example_image_input],
         outputs=[agent_chatbot, image_viewer, features_view, similar_cases_view, image_path_state],
     )
+    example_change_event.then(
+        fn=_chat_input_state_after_example_change,
+        inputs=[example_image_input],
+        outputs=[chat_input],
+    )
 
-    clear_btn.click(
+    clear_event = clear_btn.click(
         fn=clear_all,
         inputs=None,
         outputs=[agent_chatbot, chat_input, features_view, similar_cases_view, image_viewer, example_image_input, image_path_state],
+    )
+    clear_event.then(
+        fn=lambda: gr.update(interactive=True, placeholder=CHAT_INPUT_PLACEHOLDER),
+        inputs=None,
+        outputs=[chat_input],
     )
 
     # "How does it work?" Section
     gr.HTML("<hr style='border:0.5px solid #ccc; margin: 20px 0;'>")
     gr.Markdown("## 🔮 How Does It Work?")
 
-    # with gr.Accordion(label="Prompt Design", open=False):
-    #     with gr.Row():
-    #         gr.Markdown("""
-    #             ### Prompt Design  
-    #             As you've noticed, this classifier is not a custom-trained CNN image classifier.
-    #             Instead, it uses GPT-4, a Large Language Model with Vision and Reasoning capability, to classify images based on a prompt.
-    #             Sepecifically, the prompt covers the following parts:
-    #             - **Instructions:** A short task instruction with domain context and category definitions
-    #             - **Examples:** 1 image from each of the 4 categories are provided as examples, along with an explanation to facilitate reasoning
-    #             - **Test Image:** The actual test image, different from the example images, to be classified
-    #         """)
-            
-    # with gr.Accordion(label="Batch Accuracy", open=False):
-    #     with gr.Row():
-    #         with gr.Column(scale=1):
-    #             gr.Markdown("""
-    #             ### Batch Accuracy
-    #             🔶 **Note that this is only a very preliminary proof of concept.** 🔶  
-    #             The current prompt was tested on a batch of **79** images (~20 each category), from a single source of image provider, with the following results:
-    #             - **Accuracy:** 75%
-    #             - **Precision:** 80%
-    #             - **Recall:** 75%
-    #             - **F1-score:** 75%
-    #             - **Confusion Matrix:** (see on the right)
-    #             - **Classification Report:**
-    #             | category | precision | recall | f1-score | sample size |
-    #             |---|---|---|---|---|
-    #             | clear | 0.79 | 0.95 | 0.86 | 20 |
-    #             | crystals | 0.93 | 0.68 | 0.79 | 19 |
-    #             | other | 0.92 | 0.55 | 0.69 | 20 |
-    #             | precipitate | 0.55 | 0.80 | 0.65 | 20 |
-    #             | average | 0.80 | 0.75 | 0.75 | 79 |
-    #             """)
-            
-    #         with gr.Column(scale=1):
-    #             gr.Image(value="figures/confusion_matrix.png", label="Confusion Matrix", show_label=True)
+    with gr.Accordion(label="Agent Design - The Reasoning Graph", open=False):
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("""
+                    ### The Reasoning Graph
+                    
+                    Under the hood, the agent is built as a reasoning graph.
+                    
+                    It first extracts features, then estimates uncertainty.
+                            
+                    If uncertainty is low, it makes a direct decision.
+                            
+                    If uncertainty is high, it retrieves similar cases and performs case-based reasoning before producing a recommendation.
+                    """)
+            with gr.Column(scale=2):
+                gr.Image(value="figures/agent_structure.png", label="Agent Structure", show_label=True, height=400)
+    
+    with gr.Accordion(label="Knowledge Base", open=False):
+        with gr.Row():
+            gr.Markdown("""
+                Crystallization interpretation reference cases are extracted from this publically available handbook: [Crystal Growth 101](https://hamptonresearch.com/uploads/cg_pdf/CG101_COMPLETE_2019.pdf)
+            """)
 
-    # with gr.Accordion(label="Cost & Tokens", open=False):
-    #     with gr.Row():
-    #         gr.Markdown("""
-    #             ### Cost & Tokens  
-    #             - **Cost:** One image classification with the current prompt design costs about **$0.01** (USD) using GPT-4.1. Batch job costs half the price.
-    #             - **Tokens:** The current prompt design uses about **4000 tokens** (input + output) for each image classification.
-    #         """)
-
-    # with gr.Accordion(label="Why vLLM Could Be Helpful", open=False):
-    #     with gr.Row():
-    #         gr.Markdown("""
-    #             ### Why vLLM Could Be Helpful  
-    #             From this mini proof of concept, we can already observe 2 potential benefits of using vLLM:
-    #             - **Small "Training" Set:** The current prompt design only uses 4 example images. More examples are going to be helpful, but the goal is to cover typical variations rather than providing huge learning bases.
-    #             - **Language & Reasoning:** Language and reasoning provides a powerful handle to capture knowledge from domain experts using plain text and give examples in the prompt.
-    #         """)
-
-    # # "What's Next?" Section
-    # gr.HTML("<hr style='border:0.5px solid #ccc; margin: 20px 0;'>")
-    # gr.Markdown("## 🐾 What's Next?")
-
-    # with gr.Accordion(label="Large Scale Evaluation", open=False):
-    #     with gr.Row():
-    #         gr.Markdown("""
-    #             ### Large Scale Evaluation  
-    #             The total number of test images provided by MARCO is 47,029, with the following major variations:
-    #             - **Imaging System:** Images from different source organizations appears quite different in FOV size, droplet size, background color, etc.
-    #             - **Category Definition:** The cateogry "other" has large variations by itself, and "crystals" also has different shapes, sometimes even indication of crystal growth.  
-    #             Therefore evaluation on the whole test set is important to understand the model's performance in real world.
-    #         """)
-
-    # with gr.Accordion(label="Prompt Iteration", open=False):
-    #     with gr.Row():
-    #         gr.Markdown("""
-    #             ### Prompt Iteration 
-    #             Adding more images per category to the prompt to capture typical variations.
-    #             - **5-10 Examples:** Considering **1M** context window, 5-10 example images per category is a reasonable target to start with.
-    #         """)
-
+    with gr.Accordion(label="Cost & Tokens", open=False):
+        with gr.Row():
+            gr.Markdown("""
+                ### Cost & Tokens  
+                One agent round costs an average of **$0.016** (USD), 10k tokens, using GPT-5.4.
+            """)
 
 if __name__ == "__main__":
     demo.launch(css=CSS)

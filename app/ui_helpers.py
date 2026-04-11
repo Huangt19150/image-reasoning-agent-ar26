@@ -1,31 +1,35 @@
 import html
 import json
+import base64
+import mimetypes
+import os
 
 
 NODE_NAME_DISPLAY = {
-    "agent": "🧠 Understanding the image...",
-    "action": "🔍 Inspecting visual patterns...",
-    "parse_result": {
+    "input_router": "🧠 Understanding the request...",
+    "image_observer": "🔍 Inspecting visual patterns...",
+    "uncertainty_router": {
         "initial": "⚖️ Evaluating case uncertainty...",
         "confidence_high": "🟢 Uncertainty is low.",
         "confidence_medium": "🟡 Uncertainty is detected — route to check past cases...",
         "confidence_low": "🔴 Uncertainty is high — route to check past cases...",
     },
-    "retrieve_cases": "📚 Consulting similar cases...",
-    "final_output": "🧾 Writing up findings...",
+    "case_retriever": "📚 Consulting similar cases...",
+    "report_generator": "🧾 Writing up findings...",
 }
 
+# Delay config follows the same node keys as NODE_NAME_DISPLAY.
 SUMMARY_TRANSITION_DELAY_SEC = {
-    "agent": 0,
-    "action": 1,
-    "parse_result": {
+    "input_router": 0,
+    "image_observer": 1,
+    "uncertainty_router": {
         "initial": 5,
         "confidence_high": 2,
         "confidence_medium": 5,
         "confidence_low": 5,
     },
-    "retrieve_cases": 5,
-    "final_output": 5,
+    "case_retriever": 5,
+    "report_generator": 5,
 }
 
 
@@ -42,6 +46,7 @@ def _build_agent_prompt(image_path: str, user_text: str) -> str:
 
 
 def _resolve_node_display_name(node_name: str, node_update: dict, prefer_initial: bool = False) -> str:
+    """Resolve UI-facing node labels, including confidence-specific uncertainty labels."""
     mapped = NODE_NAME_DISPLAY.get(node_name, node_name)
     if not isinstance(mapped, dict):
         return str(mapped)
@@ -60,6 +65,7 @@ def _resolve_summary_transition_delay_sec(
     node_update: dict,
     prefer_initial: bool = False,
 ) -> float:
+    """Resolve per-node transition delay with confidence-aware uncertainty timing."""
     mapped = SUMMARY_TRANSITION_DELAY_SEC.get(node_name, 0)
     if not isinstance(mapped, dict):
         try:
@@ -123,12 +129,12 @@ def _state_update_to_stream_text(node_update: dict) -> str:
 
 
 def _format_summary_html(node_name: str, node_update: dict, prefer_initial: bool = False) -> str:
-    """Render summary text, with optional emphasis for specific confidence states."""
+    """Render summary text, with emphasis for uncertainty confidence states."""
     display_node_name = _resolve_node_display_name(node_name, node_update, prefer_initial=prefer_initial)
     safe_node_name = html.escape(display_node_name)
 
     confidence = str(node_update.get("confidence", "")).strip().lower()
-    if node_name == "parse_result" and not prefer_initial:
+    if node_name == "uncertainty_router" and not prefer_initial:
         if confidence == "high":
             return f"<span class='high-confidence'>{safe_node_name}</span>"
         if confidence == "medium":
@@ -140,10 +146,13 @@ def _format_summary_html(node_name: str, node_update: dict, prefer_initial: bool
 
 def _format_stream_update(node_name: str, node_update: dict, prefer_initial: bool = False) -> str:
     lines = []
+    has_tool_calls = False
     if node_update.get("final_report"):
         lines.append("Final report generated. Read below for details.")
     elif "messages" in node_update:
         for message in node_update["messages"]:
+            if getattr(message, "tool_calls", None):
+                has_tool_calls = True
             content = _message_to_stream_text(message)
             if content:
                 lines.append(content)
@@ -159,6 +168,9 @@ def _format_stream_update(node_name: str, node_update: dict, prefer_initial: boo
     payload = "\n\n".join(lines) if lines else "(no text payload)"
     safe_payload = html.escape(payload)
     summary_html = _format_summary_html(node_name, node_update, prefer_initial=prefer_initial)
+
+    if node_name == "input_router" and not has_tool_calls and payload != "(no text payload)":
+        return f"<div><strong>{summary_html}</strong><div>{safe_payload}</div></div>"
 
     return (
         f"<details>"
@@ -201,6 +213,7 @@ def _extract_features_from_messages(messages) -> dict:
 
 
 def _render_features_html(features: dict) -> str:
+    """Render selected extracted features in fixed order with value-based chip styling."""
     if not isinstance(features, dict) or not features:
         return _empty_features_html()
 
@@ -262,6 +275,7 @@ def _render_features_html(features: dict) -> str:
 
 
 def _render_cases_html(cases: list[dict]) -> str:
+    """Render top retrieved cases as lightweight evidence cards."""
     if not isinstance(cases, list) or not cases:
         return _empty_cases_html()
 
@@ -295,6 +309,7 @@ def _render_cases_html(cases: list[dict]) -> str:
 
 
 def _format_final_report_markdown(report: dict) -> str:
+    """Render final report markdown and color-code confidence using shared chip styles."""
     confidence_raw = str(report.get("confidence", "")).strip()
     confidence_value = confidence_raw.lower()
     confidence_class = ""
