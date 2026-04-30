@@ -81,10 +81,10 @@ If you want to explore the repo further:
 
 1. Prepare environment:
 ```bash
-python3.10 -m venv venv
+python3.12 -m venv venv
 . venv/bin/activate
 pip install -r requirements.txt
 ```
-2. Create a `.env` file and add an active OpenAI API key to it.
+2. Create a `.env` file and add an active OpenAI API key.
 
-3. Run `app.py` locally, or export key components in `src/mwm_vlm/components`
+3. Run `app.py` locally, or explore key components in `src/mwm_vlm/components`
